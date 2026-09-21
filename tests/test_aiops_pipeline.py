@@ -70,3 +70,50 @@ def test_consumer_receives_event():
     messages = consumer.consume()
 
     assert len(messages) == 1
+
+
+def test_warning_log_record_is_detected():
+    detector = AnomalyDetector()
+
+    record = {
+        "timestamp": "2026-09-20T10:10:00",
+        "service": "inventory-service",
+        "response_time_ms": 50,
+        "cpu_percent": 30,
+        "memory_percent": 25,
+        "log_level": "WARNING",
+        "message": "Warning: degraded service"
+    }
+
+    event = detector.detect(record)
+
+    assert event is not None
+    assert "Error log detected" in event["reasons"]
+
+
+def test_run_pipeline_processes_data_and_detects_anomalies():
+    result = run_pipeline("data/service_data.json")
+
+    assert result["records_processed"] == 10
+    assert len(result["anomalies_detected"]) == 2
+    assert len(result["events_consumed"]) == 2
+    assert result["anomalies_detected"][0]["service"] == "payment-service"
+    assert result["events_consumed"][0]["type"] == "ANOMALY"
+
+
+def test_event_topic_clear_removes_messages():
+    topic = EventTopic("anomaly-events")
+    topic.publish({"service": "a"})
+    topic.publish({"service": "b"})
+
+    topic.clear()
+
+    assert topic.get_messages() == []
+
+
+def test_producer_rejects_falsey_event():
+    topic = EventTopic("anomaly-events")
+    producer = EventProducer(topic)
+
+    assert producer.publish(None) is False
+    assert topic.get_messages() == []
